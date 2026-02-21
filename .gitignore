@@ -6,3 +6,6 @@ node_modules/
 # Lavalink
 lavalink/logs/
 lavalink/*.jar
+
+# Per-guild bot settings (created at runtime)
+data/

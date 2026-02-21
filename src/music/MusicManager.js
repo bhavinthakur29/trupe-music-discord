@@ -1,5 +1,6 @@
 import { LavalinkManager } from 'lavalink-client';
 import { Events } from 'discord.js';
+import * as guildSettings from '../data/guildSettings.js';
 
 /** Default idle time (ms) before destroying the player when the queue is empty. */
 const DEFAULT_IDLE_DESTROY_MS = 60_000;
@@ -107,13 +108,20 @@ export class MusicManager {
       if (typeof player.setTextChannel === 'function') player.setTextChannel(textChannelId);
       return player;
     }
+    const saved = guildSettings.get(guildId);
+    const volume = typeof saved.volume === 'number'
+      ? Math.min(100, Math.max(0, Math.round(saved.volume)))
+      : this.options.defaultVolume;
     player = await this.manager.createPlayer({
       guildId,
       voiceChannelId,
       textChannelId,
       selfDeaf: true,
-      volume: this.options.defaultVolume,
+      volume,
     });
+    if (saved.loop && ['off', 'track', 'queue'].includes(saved.loop)) {
+      player.setRepeatMode(saved.loop);
+    }
     await player.connect();
     return player;
   }
@@ -299,6 +307,7 @@ export class MusicManager {
     if (typeof volume === 'number') {
       const clamped = Math.min(100, Math.max(0, Math.round(volume)));
       await player.setVolume(clamped);
+      guildSettings.set(guildId, { volume: clamped });
       return clamped;
     }
     return player.volume ?? null;
@@ -316,6 +325,7 @@ export class MusicManager {
     if (mode !== undefined) {
       if (!['off', 'track', 'queue'].includes(mode)) return player.repeatMode ?? null;
       player.setRepeatMode(mode);
+      guildSettings.set(guildId, { loop: mode });
       return mode;
     }
     return player.repeatMode ?? 'off';

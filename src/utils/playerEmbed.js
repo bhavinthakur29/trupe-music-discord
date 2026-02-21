@@ -125,13 +125,14 @@ export function buildPlayerEmbed(client, guildId, view = 'nowplaying') {
 
 /**
  * Build button rows for the interactive player (reference-style layout).
- * Row 1: Vol Down | Back | Pause | Skip | Vol Up
+ * Row 1: Vol Down | Back | Pause/Resume | Skip | Vol Up
  * Row 2: Loop | Stop | Queue | Reset filter | Refresh
+ * @param {object} [opts] - Optional overrides (e.g. { pausedOverride: true } after toggling pause)
  */
-export function buildPlayerComponents(client, guildId, view = 'nowplaying') {
+export function buildPlayerComponents(client, guildId, view = 'nowplaying', opts = {}) {
   const player = client.music?.getPlayer(guildId);
   const hasPlayer = !!player;
-  const paused = hasPlayer && player.paused;
+  const paused = opts.pausedOverride !== undefined ? opts.pausedOverride : (hasPlayer && player.paused);
   const loopMode = hasPlayer ? (client.music.loop(guildId) ?? 'off') : 'off';
   const hasPrevious = hasPlayer && (player.queue?.previous?.length ?? 0) > 0;
 

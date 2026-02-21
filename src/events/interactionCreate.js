@@ -68,7 +68,8 @@ async function handleMusicButton(client, interaction) {
   const currentView = title.includes('Queue') ? 'queue' : 'nowplaying';
   const nextView = action === 'queue' ? 'queue' : action === 'refresh' ? 'nowplaying' : currentView;
   const embed = buildPlayerEmbed(client, guildId, nextView);
-  const components = buildPlayerComponents(client, guildId, nextView);
+  const componentOpts = action === 'pause' && player ? { pausedOverride: player.paused } : {};
+  const components = buildPlayerComponents(client, guildId, nextView, componentOpts);
   return interaction.update({ embeds: [embed], components }).catch(() => {});
 }
 
