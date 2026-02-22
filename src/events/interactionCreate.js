@@ -14,12 +14,16 @@ async function handleMusicButton(client, interaction) {
     return interaction.followUp({ content: 'Join my voice channel to use the player.', ephemeral: true }).catch(() => {});
   }
 
+  let pausedStateAfterToggle = undefined;
   try {
     switch (action) {
-      case 'pause':
-        if (player.paused) await client.music.resume(guildId);
+      case 'pause': {
+        const wasPaused = player.paused;
+        if (wasPaused) await client.music.resume(guildId);
         else await client.music.pause(guildId);
+        pausedStateAfterToggle = !wasPaused;
         break;
+      }
       case 'skip':
         await client.music.skip(guildId);
         break;
@@ -68,7 +72,8 @@ async function handleMusicButton(client, interaction) {
   const currentView = title.includes('Queue') ? 'queue' : 'nowplaying';
   const nextView = action === 'queue' ? 'queue' : action === 'refresh' ? 'nowplaying' : currentView;
   const embed = buildPlayerEmbed(client, guildId, nextView);
-  const componentOpts = action === 'pause' && player ? { pausedOverride: player.paused } : {};
+  const componentOpts =
+    pausedStateAfterToggle !== undefined ? { pausedOverride: pausedStateAfterToggle } : {};
   const components = buildPlayerComponents(client, guildId, nextView, componentOpts);
   return interaction.update({ embeds: [embed], components }).catch(() => {});
 }
