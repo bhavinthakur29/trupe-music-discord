@@ -17,20 +17,27 @@ async function registerSlashCommands(client) {
   const body = [...client.commands.values()].map((c) => c.data.toJSON());
   if (body.length === 0) return;
 
-  try {
-    if (config.guildIds?.length) {
-      for (const guildId of config.guildIds) {
+  const names = body.map((c) => c.name).sort().join(', ');
+  if (config.guildIds?.length) {
+    console.log(`[Commands] Registering to ${config.guildIds.length} guild(s): ${config.guildIds.join(', ')}`);
+    for (const guildId of config.guildIds) {
+      try {
         await rest.put(Routes.applicationGuildCommands(client.user.id, guildId), { body });
-        console.log(`[Commands] Registered ${body.length} slash command(s) in guild ${guildId}.`);
+        console.log(`[Commands] Registered ${body.length} slash command(s) in guild ${guildId}: ${names}`);
+      } catch (err) {
+        console.error(`[Commands] Guild ${guildId}: ${err.message}`);
+        if (err.code === 50001) console.error('[Commands] Re-invite the bot with scope applications.commands, or remove this guild from GUILD_ID.');
       }
-    } else {
-      await rest.put(Routes.applicationCommands(client.user.id), { body });
-      console.log(`[Commands] Registered ${body.length} global slash command(s).`);
     }
-  } catch (err) {
-    console.error('[Commands] Slash command registration failed:', err.message);
-    if (err.code === 50001) console.error('[Commands] Ensure the bot has the applications.commands scope and is invited with it.');
-    throw err;
+  } else {
+    try {
+      await rest.put(Routes.applicationCommands(client.user.id), { body });
+      console.log(`[Commands] Registered ${body.length} global slash command(s): ${names}`);
+    } catch (err) {
+      console.error('[Commands] Slash command registration failed:', err.message);
+      if (err.code === 50001) console.error('[Commands] Ensure the bot has the applications.commands scope and is invited with it.');
+      throw err;
+    }
   }
 }
 
@@ -59,9 +66,12 @@ async function main() {
 
   client.commands = new Collection();
   const commandList = await loadCommands();
+  const loadedNames = [];
   for (const [name, cmd] of commandList) {
     client.commands.set(name, cmd);
+    loadedNames.push(name);
   }
+  console.log('[Commands] Loaded:', loadedNames.sort().join(', '));
 
   const events = await loadEvents();
   registerEvents(client, events);

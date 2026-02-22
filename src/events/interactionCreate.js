@@ -26,9 +26,12 @@ async function handleMusicButton(client, interaction) {
       }
       case 'skip':
         await client.music.skip(guildId);
+        // Brief delay so the player advances to the next track before we refresh the panel
+        await new Promise((r) => setTimeout(r, 150));
         break;
       case 'previous':
         await client.music.previous(guildId);
+        await new Promise((r) => setTimeout(r, 150));
         break;
       case 'stop':
         client.music.stop(guildId);
@@ -56,7 +59,13 @@ async function handleMusicButton(client, interaction) {
           await player.filterManager.resetFilters();
         }
         break;
-      case 'queue':
+      case 'queue': {
+        // Show queue in an ephemeral reply (only visible to the user who clicked)
+        const queueEmbed = buildPlayerEmbed(client, guildId, 'queue', {});
+        await interaction.followUp({ embeds: [queueEmbed], ephemeral: true }).catch(() => {});
+        // Keep panel on now-playing view (handled below by nextView)
+        break;
+      }
       case 'refresh':
         break;
       default:
@@ -70,12 +79,28 @@ async function handleMusicButton(client, interaction) {
 
   const title = interaction.message?.embeds?.[0]?.title ?? '';
   const currentView = title.includes('Queue') ? 'queue' : 'nowplaying';
-  const nextView = action === 'queue' ? 'queue' : action === 'refresh' ? 'nowplaying' : currentView;
-  const embed = buildPlayerEmbed(client, guildId, nextView);
-  const componentOpts =
-    pausedStateAfterToggle !== undefined ? { pausedOverride: pausedStateAfterToggle } : {};
-  const components = buildPlayerComponents(client, guildId, nextView, componentOpts);
-  return interaction.update({ embeds: [embed], components }).catch(() => {});
+  // Queue = ephemeral only. Refresh/skip/previous = show now-playing so the panel shows the current song.
+  const nextView =
+    action === 'queue' ? 'nowplaying'
+    : action === 'refresh' || action === 'skip' || action === 'previous' ? 'nowplaying'
+    : currentView;
+
+  const currentPlayer = client.music?.getPlayer(guildId);
+  const pausedOverride =
+    pausedStateAfterToggle !== undefined ? pausedStateAfterToggle : currentPlayer?.paused;
+  const panelOpts = pausedOverride !== undefined ? { pausedOverride } : {};
+
+  const embed = buildPlayerEmbed(client, guildId, nextView, panelOpts);
+  const components = buildPlayerComponents(client, guildId, nextView, panelOpts);
+
+  try {
+    await interaction.update({ embeds: [embed], components });
+  } catch (err) {
+    console.warn('[Player button] interaction.update failed:', err?.message ?? err, '- editing message directly');
+    await interaction.message?.edit({ embeds: [embed], components }).catch((e) => {
+      console.error('[Player button] message.edit failed:', e?.message ?? e);
+    });
+  }
 }
 
 export default {

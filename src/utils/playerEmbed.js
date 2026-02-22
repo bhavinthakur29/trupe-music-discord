@@ -34,9 +34,10 @@ function requesterLabel(requester) {
  * @param {import('discord.js').Client} client
  * @param {string} guildId
  * @param {'nowplaying'|'queue'} view
+ * @param {{ pausedOverride?: boolean }} [opts] - If set, use for "Paused" in footer (keeps embed in sync with button)
  * @returns {EmbedBuilder}
  */
-export function buildPlayerEmbed(client, guildId, view = 'nowplaying') {
+export function buildPlayerEmbed(client, guildId, view = 'nowplaying', opts = {}) {
   const embed = new EmbedBuilder().setColor(COLOR).setTimestamp();
 
   if (!client.music) {
@@ -76,6 +77,7 @@ export function buildPlayerEmbed(client, guildId, view = 'nowplaying') {
 
   const np = client.music.getNowPlaying(guildId);
   const { track, position = 0, duration, paused, requester } = np ?? {};
+  const isPaused = opts.pausedOverride !== undefined ? opts.pausedOverride : paused;
   const info = track?.info ?? {};
   const title = info.title ?? 'Unknown';
   const author = info.author ?? null;
@@ -117,7 +119,7 @@ export function buildPlayerEmbed(client, guildId, view = 'nowplaying') {
 
   const loopMode = client.music.loop(guildId);
   const loopLabel = loopMode === 'track' ? '🔁 Track' : loopMode === 'queue' ? '🔁 Queue' : '';
-  const footer = [paused && '⏸ Paused', `🔊 Vol ${player.volume ?? 100}%`, loopLabel].filter(Boolean).join(' · ');
+  const footer = [isPaused && '⏸ Paused', `🔊 Vol ${player.volume ?? 100}%`, loopLabel].filter(Boolean).join(' · ');
   if (footer) embed.setFooter({ text: footer });
   if (info.uri) embed.setURL(info.uri);
   return embed;
