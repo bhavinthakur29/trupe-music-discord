@@ -231,6 +231,24 @@ export class MusicManager {
   }
 
   /**
+   * Seek to a position in the current track (position in milliseconds).
+   * @param {string} guildId
+   * @param {number} positionMs - Position in ms (0 = start, max = track duration)
+   * @returns {Promise<boolean>} - true if seeked, false if no player or track not seekable
+   */
+  async seek(guildId, positionMs) {
+    const player = this.getPlayer(guildId);
+    if (!player?.queue?.current) return false;
+    try {
+      const pos = Math.max(0, Math.round(Number(positionMs)));
+      await player.seek(pos);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Stop playback and destroy the player (disconnect, clear queue).
    * @param {string} guildId
    * @returns {boolean} - whether a player was found and destroyed
