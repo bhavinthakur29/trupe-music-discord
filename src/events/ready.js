@@ -12,7 +12,7 @@ export default {
     console.log(`[Ready] In ${guildCount} Discord server(s).`);
 
     client.user.setPresence({
-      activities: [{ name: 'music', type: ActivityType.Listening }],
+      activities: [{ name: 'High Quality Music', type: ActivityType.Listening }],
       status: 'online',
     });
   },
