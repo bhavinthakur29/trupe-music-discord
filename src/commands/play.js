@@ -81,9 +81,11 @@ export default {
     } catch (err) {
       console.error('[Play] Error:', err);
       const isConnectionError =
-        err.message?.includes('Lavalink') || err.message?.includes('connection');
+        err?.code === 'NO_LAVALINK_NODE' ||
+        err.message?.includes('Lavalink') ||
+        err.message?.includes('connection');
       const message = isConnectionError
-        ? "Couldn't reach the music server (reconnecting). Please try again in a moment."
+        ? "The music server is still connecting (or reconnecting). Please try again in a moment."
         : 'Something went wrong while playing. Please try again.';
       return interaction.editReply({ content: message }).catch(() => {});
     }

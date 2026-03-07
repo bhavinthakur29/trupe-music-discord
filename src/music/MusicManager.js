@@ -1,5 +1,5 @@
 import { LavalinkManager } from 'lavalink-client';
-import { Events } from 'discord.js';
+import { Events, ChannelType } from 'discord.js';
 import * as guildSettings from '../data/guildSettings.js';
 
 /** Default idle time (ms) before destroying the player when the queue is empty. */
@@ -76,6 +76,13 @@ export class MusicManager {
   _bindManagerEvents() {
     this.manager.on('playerDestroy', (player) => {
       this.client.emit('musicPlayerDestroy', player);
+      const guildId = player.guildId;
+      const saved = guildSettings.get(guildId);
+      if (saved.stayConnected && saved.voiceChannelId) {
+        setTimeout(() => {
+          this._reconnectToChannel(guildId, saved.voiceChannelId).catch(() => {});
+        }, 2000);
+      }
     });
     this.manager.on('queueEnd', (player) => {
       this.client.emit('musicQueueEnd', player);
@@ -89,10 +96,21 @@ export class MusicManager {
 
   /**
    * Initialize the manager (call once after client is ready).
+   * Nodes connect asynchronously; 24x7 reconnect runs when a node connects or after a short delay.
    * @param {{ id: string, username: string }} user - client.user
    */
   init(user) {
     this.manager.init({ id: user.id, username: user.username });
+    const runReconnect = () => this.reconnectStayConnectedGuilds().catch((err) => console.warn('[Music] 24x7 reconnect:', err?.message));
+    this.manager.nodeManager?.on('connect', runReconnect);
+    setTimeout(runReconnect, 5000);
+  }
+
+  /**
+   * True if at least one Lavalink node is connected (use before creating a player).
+   */
+  get useable() {
+    return Boolean(this.manager?.useable);
   }
 
   /**
@@ -103,27 +121,97 @@ export class MusicManager {
    * @returns {Promise<import('lavalink-client').Player>}
    */
   async getOrCreatePlayer(guildId, voiceChannelId, textChannelId) {
+    if (!this.manager.useable) {
+      const err = new Error('NO_LAVALINK_NODE');
+      err.code = 'NO_LAVALINK_NODE';
+      throw err;
+    }
     let player = this.manager.getPlayer(guildId);
     if (player) {
-      if (typeof player.setTextChannel === 'function') player.setTextChannel(textChannelId);
-      return player;
+      const currentVc = player.voiceChannelId ?? player.voiceChannel?.id;
+      if (currentVc !== voiceChannelId) {
+        player.destroy();
+        player = null;
+      } else {
+        if (typeof player.setTextChannel === 'function') player.setTextChannel(textChannelId);
+        guildSettings.set(guildId, { voiceChannelId });
+        return player;
+      }
     }
-    const saved = guildSettings.get(guildId);
-    const volume = typeof saved.volume === 'number'
-      ? Math.min(100, Math.max(0, Math.round(saved.volume)))
-      : this.options.defaultVolume;
-    player = await this.manager.createPlayer({
-      guildId,
-      voiceChannelId,
-      textChannelId,
-      selfDeaf: true,
-      volume,
-    });
-    if (saved.loop && ['off', 'track', 'queue'].includes(saved.loop)) {
-      player.setRepeatMode(saved.loop);
+    if (!player) {
+      const saved = guildSettings.get(guildId);
+      const volume = typeof saved.volume === 'number'
+        ? Math.min(100, Math.max(0, Math.round(saved.volume)))
+        : this.options.defaultVolume;
+      player = await this.manager.createPlayer({
+        guildId,
+        voiceChannelId,
+        textChannelId,
+        selfDeaf: true,
+        volume,
+      });
+      if (saved.loop && ['off', 'track', 'queue'].includes(saved.loop)) {
+        player.setRepeatMode(saved.loop);
+      }
+      await player.connect();
+      guildSettings.set(guildId, { voiceChannelId });
     }
-    await player.connect();
     return player;
+  }
+
+  /**
+   * Join a voice channel without playing. Updates saved voice channel for 24x7.
+   * @param {string} guildId
+   * @param {string} voiceChannelId
+   * @param {string} [textChannelId]
+   * @returns {Promise<import('lavalink-client').Player>}
+   */
+  async joinOnly(guildId, voiceChannelId, textChannelId) {
+    return this.getOrCreatePlayer(guildId, voiceChannelId, textChannelId ?? null);
+  }
+
+  /**
+   * Leave the voice channel and clear saved channel for this guild.
+   * @param {string} guildId
+   * @returns {boolean} - whether a player was found and disconnected
+   */
+  leave(guildId) {
+    const player = this.getPlayer(guildId);
+    if (!player) return false;
+    player.destroy();
+    guildSettings.set(guildId, { voiceChannelId: null });
+    return true;
+  }
+
+  /**
+   * Reconnect to saved voice channels for all guilds with stayConnected (e.g. after bot restart).
+   * @internal
+   */
+  async _reconnectToChannel(guildId, voiceChannelId) {
+    const guild = this.client.guilds?.cache?.get(guildId);
+    if (!guild) return;
+    const channel = guild.channels?.cache?.get(voiceChannelId);
+    if (!channel || (channel.type !== ChannelType.GuildVoice && channel.type !== ChannelType.GuildStageVoice)) return;
+    await this.getOrCreatePlayer(guildId, voiceChannelId, null);
+  }
+
+  /**
+   * Reconnect to voice in all guilds that have stayConnected and a saved voiceChannelId. Call after ready.
+   */
+  async reconnectStayConnectedGuilds() {
+    const guilds = this.client.guilds?.cache;
+    if (!guilds) return;
+    for (const [guildId, guild] of guilds) {
+      const saved = guildSettings.get(guildId);
+      if (!saved.stayConnected || !saved.voiceChannelId) continue;
+      const channel = guild.channels?.cache?.get(saved.voiceChannelId);
+      if (!channel || (channel.type !== ChannelType.GuildVoice && channel.type !== ChannelType.GuildStageVoice)) continue;
+      try {
+        await this.getOrCreatePlayer(guildId, saved.voiceChannelId, null);
+      } catch (err) {
+        console.warn(`[Music] Could not reconnect to ${saved.voiceChannelId} in guild ${guildId}:`, err?.message);
+      }
+    }
   }
 
   /**
